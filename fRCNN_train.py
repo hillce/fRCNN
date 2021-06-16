@@ -47,15 +47,14 @@ try:
     modelSaveName = sys.argv[1]
     print("\33[1;33;40m Saving model to:\33[1;36;40m  ./models/{}.pt".format(modelSaveName))
 except IndexError as e:
-    print("\033[1;31;40m Index Error found, no model save input found. Please pass model save name when running model. {}".format(e))
-    sys.exit()
-
+    print("\033[1;31;40m Index Error found, no model save input found. Please pass model save name when running model. {} \n saving model as Debug".format(e))
+    modelSaveName = "Debug"
 try:
     dataLocation = sys.argv[2]
     print("\33[1;33;40m Data Location provided. Using:\33[1;36;40m {}".format(dataLocation))
 except IndexError as e:
-    print("\33[1;33;40m No data Location provided. Using:\33[1;36;40m 'C:/Users/shug4421/UKB_Liver/shMOLLI/data'")
-    dataLocation = 'C:/Users/shug4421/UKB_Liver/shMOLLI/data'
+    print("\33[1;33;40m No data Location provided. Using:\33[1;36;40m 'D:/UKB_Liver/20204_2_0'")
+    dataLocation = 'D:/UKB_Liver/20204_2_0'
 
 try:
     batch_size = int(sys.argv[3])
@@ -88,11 +87,11 @@ valLoader = None
 validation = False
 
 csvLoc = "./"
-trainDir = os.path.join(csvLoc,'train_full.csv')
-valDir = os.path.join(csvLoc,'val_full.csv')
+trainDir = os.path.join(csvLoc,'train_new.csv')
+valDir = os.path.join(csvLoc,'val_new.csv')
 
-trainDataset = DicomDataset(trainDir,dataLocation,transform=transforms.Compose([Rescale(256),ToTensor()]))
-valDataset = DicomDataset(valDir,'C:/Users/shug4421/UKB_Liver/shMOLLI/data',transform=transforms.Compose([Rescale(256),ToTensor()])) # pandas.errors.ParserError: Error tokenizing data. C error: Expected 11 fields in line 7, saw 21
+trainDataset = DicomDataset(trainDir,dataLocation,transform=transforms.Compose([Rescale(288),ToTensor()]))
+valDataset = DicomDataset(valDir,dataLocation,transform=transforms.Compose([Rescale(288),ToTensor()])) # pandas.errors.ParserError: Error tokenizing data. C error: Expected 11 fields in line 7, saw 21
 
 trainLoader = DataLoader(trainDataset,batch_size=batch_size,shuffle=True,collate_fn=collate_var_rois)
 valLoader = DataLoader(valDataset,batch_size=batch_size,shuffle=False,collate_fn=collate_var_rois)
@@ -131,17 +130,22 @@ print('#'*50)
 #classes = ('Body','Liver','Cyst','Lung','Heart','Bg')
 #classesDict = {0.:'Body',1.:'Liver',2.:'Cyst',3.:'Lung',4.:'Heart',5.:'Bg'}
 
-classes = ('Bg','Body','Liver','Cyst','Lung','Heart')
-classesDict = {0.:'Bg',1.:'Body',2.:'Liver',3.:'Cyst',4.:'Lung',5.:'Heart'}
+classes = ['Bg','Body','Liver','Cyst','Lung','Heart','Spleen','Aorta','Kidney','IVC']
+classesDict = {0.:'Bg',1.:'Body',2.:'Liver',3.:'Cyst',4.:'Lung',5.:'Heart',6.:'Spleen',7.:'Aorta',8.:'Kidney',9.:'IVC'}
+
+# classes = ('Bg','Body','Liver','Cyst','Lung','Heart')
+# classesDict = {0.:'Bg',1.:'Body',2.:'Liver',3.:'Cyst',4.:'Lung',5.:'Heart'}
 
 # Setup the model and pretrain
-backbone = torchvision.models.mobilenet_v2(pretrained=True).features
+
+# backbone = torchvision.models.mobilenet_v2(pretrained=True).features
+backbone = torchvision.models.resnet101(pretrained=True).features
 backbone.out_channels = 1280
 
 anchorGen = AnchorGenerator(sizes=((32,64,128,256,512),),aspect_ratios=((0.5,1.0,2.0),))
-roiPooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0],output_size=7,sampling_ratio=2)
+# roiPooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0],output_size=7,sampling_ratio=2)
 
-model = FasterRCNN(backbone,num_classes=6,rpn_anchor_generator=anchorGen,box_roi_pool=roiPooler)
+model = FasterRCNN(backbone,num_classes=len(classes),rpn_anchor_generator=anchorGen)#,box_roi_pool=roiPooler)
 
 model.to(device)
 
@@ -190,6 +194,7 @@ for epoch in range(numEpochs):
     lossVal = 10000.0
     print("\33[1;36;40m #### Training Phase ####")
     model.train(True)
+    avgLoss = 0
     for i, data in enumerate(trainLoader):
         #optimizer.zero_grad()
         
@@ -218,6 +223,7 @@ for epoch in range(numEpochs):
         lossesRed = sum(loss for loss in lossDictRed.values())
 
         lossVal = lossesRed.item()
+        avgLoss += lossVal
 
         if not math.isfinite(lossVal):
             print(" Loss is {}, stopping training".format(lossVal))
@@ -230,12 +236,14 @@ for epoch in range(numEpochs):
         if i % (trainDataset.__len__()//stepTotal) == 1:
             progressBar(batch_size,i,trainDataset.__len__(),lossVal,tEpoch,t0,stepTotal=stepTotal)
     
-    writer.add_scalar('Loss/train',lossVal,epoch)
+    avgLoss /= trainDataset.__len__()
+    writer.add_scalar('Loss/train',avgLoss,epoch)
     writer.add_scalars('LossTrain',lossDict,epoch)
 
     if validation:
         stepTotal = 10
         print("\n\33[1;36;40m #### Validation Phase ####")
+        avgLoss = 0
         with torch.no_grad():
             for i, data in enumerate(valLoader):
                 targetDictList = []
@@ -265,18 +273,24 @@ for epoch in range(numEpochs):
                 lossesRed = sum(loss for loss in lossDictRed.values())
 
                 lossVal = lossesRed.item()
+                avgLoss += lossVal
                 if i % (valDataset.__len__()//stepTotal) == 1:
                     progressBar(batch_size,i,valDataset.__len__(),lossVal,tEpoch,t0,stepTotal=stepTotal)
 
-            writer.add_scalar('Loss/validation',lossVal,epoch)
+            avgLoss /= valDataset.__len__()
+            writer.add_scalar('Loss/validation',avgLoss,epoch)
             writer.add_scalars('LossVal',lossDict,epoch)
 
-    if lossVal < bestLoss:
-        print("\n\33[1;32;40m Loss is \33[1;33;40m{:.8f}\33[1;32;40m, Saving Model.".format(lossVal))
-        bestLoss = lossVal
+    if avgLoss < bestLoss:
+        print("\n\33[1;32;40m Loss is \33[1;33;40m{:.8f}\33[1;32;40m, Saving Model.".format(avgLoss))
+        bestLoss = avgLoss
         torch.save({'epoch':epoch,
                     'model_state_dict':model.state_dict(),
                     'optimizer_state_dict':optimizer.state_dict(),
                     'loss':bestLoss
                     },"./models/{}.pt".format(modelSaveName))
+
+    else:
+        print("\n\33[1;31;40m Val loss is higher, \33[1;33;40m{:.8f} > {:.8f}".format(avgLoss,bestLoss))
+
 print('Finished Training')

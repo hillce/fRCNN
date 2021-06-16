@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import os
+import os, csv, copy
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -24,12 +24,16 @@ class DicomDataset(Dataset):
             transform (callable, optional): Optional transform to be applied on a sample.
         """
         self.data = pd.read_csv(csvFile,header=None)
+
         self.rootDir = rootDir
         self.transform = transform
-        #self.classDict = {'Body':0,'Liver':1,'Cyst':2,'Lung':3,'Heart':4,
+        # self.classDict = {'Body':0,'Liver':1,'Cyst':2,'Lung':3,'Heart':4,
         #                    'Body ':0,'Liver ':1,'Cyst ':2,'Lung ':3,'Heart ':4}
-        self.classDict = {'Body':1,'Liver':2,'Cyst':3,'Lung':4,'Heart':5,'Body ':1,'Liver ':2,'Cyst ':3,'Lung ':4,'Heart ':5}
-    
+        # self.classDict = {'Body':1,'Liver':2,'Cyst':3,'Lung':4,'Heart':5,'Body ':1,'Liver ':2,'Cyst ':3,'Lung ':4,'Heart ':5}
+        
+        self.classDict = {'Bg':0,'Body':1,'Liver':2,'Cyst':3,'Lung':4,'Heart':5,'Spleen':6,'Aorta':7,'Kidney':8,'IVC':9,
+                            'Bg ':0,'Body ':1,'Liver ':2,'Cyst ':3,'Lung ':4,'Heart ':5,'Spleen ':6,'Aorta ':7,'Kidney ':8,'IVC ':9}
+
     def __len__(self):
         return len(self.data)
 
@@ -72,6 +76,10 @@ class DicomDataset(Dataset):
         labels = labels.reshape(-1,5)
 
         for i in range(len(labels)):
+            labelsCopy = copy.deepcopy(labels[i,:])
+            labelsCopy[:4] = labels[i,1:]
+            labelsCopy[4] = labels[i,0]
+            labels[i,:] = labelsCopy
             if pd.isna(labels[i,4]):
                 break
             labels[i,4] = self.classDict[labels[i,4]]

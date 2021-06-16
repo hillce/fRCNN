@@ -33,7 +33,7 @@ batch_size = 2
 csvLoc = "./"
 testDir = os.path.join(csvLoc,'test.csv')
 
-testDataset = DicomDataset(testDir,'C:/Users/shug4421/UKB_Liver/shMOLLI/data',transform=transforms.Compose([Rescale(256),ToTensor()]))
+testDataset = DicomDataset(testDir,'D:/UKB_Liver/20204_2_0',transform=transforms.Compose([Rescale(256),ToTensor()]))
 testLoader = DataLoader(testDataset,batch_size=batch_size,shuffle=True,collate_fn=collate_var_rois)
 
 #classes = ('Body','Liver','Cyst','Lung','Heart','Bg')
@@ -47,9 +47,9 @@ backbone = torchvision.models.mobilenet_v2(pretrained=True).features
 backbone.out_channels = 1280
 
 anchorGen = AnchorGenerator(sizes=((32,64,128,256,512),),aspect_ratios=((0.5,1.0,2.0),))
-roiPooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0],output_size=7,sampling_ratio=2)
+# roiPooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0],output_size=7,sampling_ratio=2)
 
-model = FasterRCNN(backbone,num_classes=5,rpn_anchor_generator=anchorGen,box_roi_pool=roiPooler)
+model = FasterRCNN(backbone,num_classes=5,rpn_anchor_generator=anchorGen)#,box_roi_pool=roiPooler)
 optimizer = optim.Adam(model.parameters(),lr=0.001)
 
 checkpoint = torch.load('./models/fRCNN.pt')

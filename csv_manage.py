@@ -2,7 +2,7 @@ import csv
 import numpy as np
 
 
-fN = "data.csv"
+fN = "data_new.csv"
 
 trainList = []
 valList = []
@@ -19,9 +19,9 @@ with open(fN,'r') as f:
         else:
             testList.append(line)
 
-train = open("train.csv",'w',newline='')
-val = open("val.csv",'w',newline='')
-test = open("test.csv",'w',newline='')
+train = open("train_new.csv",'w',newline='')
+val = open("val_new.csv",'w',newline='')
+test = open("test_new.csv",'w',newline='')
 
 trainCSV = csv.writer(train)
 valCSV = csv.writer(val)
