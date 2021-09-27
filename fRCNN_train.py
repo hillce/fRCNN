@@ -16,10 +16,12 @@ from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
+from torch.nn.init import xavier_uniform_, zeros_
+import torch.nn as nn
 
 from torch.utils.tensorboard import SummaryWriter
-from DicomDataset import DicomDataset, Rescale, ToTensor, RandomCrop
-from fRCNN_func import collate_var_rois, is_dist_avail_and_initialized, get_world_size, reduce_dict
+from DicomDataset import DicomDataset, Rescale, ToTensor, RandomCrop, Normalise
+from fRCNN_func import collate_var_rois, reduce_dict
 
 def progressBar(batchSize,curIdx,totSetSize,lossVal,tEpoch,t0,stepTotal=10):
     idxMax = totSetSize/batchSize
@@ -87,8 +89,8 @@ valLoader = None
 validation = False
 
 csvLoc = "./"
-trainDir = os.path.join(csvLoc,'train_new.csv')
-valDir = os.path.join(csvLoc,'val_new.csv')
+trainDir = os.path.join(csvLoc,'train_new_format.csv')
+valDir = os.path.join(csvLoc,'val_new_format.csv')
 
 trainDataset = DicomDataset(trainDir,dataLocation,transform=transforms.Compose([Rescale(288),ToTensor()]))
 valDataset = DicomDataset(valDir,dataLocation,transform=transforms.Compose([Rescale(288),ToTensor()])) # pandas.errors.ParserError: Error tokenizing data. C error: Expected 11 fields in line 7, saw 21
@@ -127,9 +129,6 @@ print('\33[1;37;40m#'*50)
 print(' Setting up Model and Anchor Generator')
 print('#'*50)
 
-#classes = ('Body','Liver','Cyst','Lung','Heart','Bg')
-#classesDict = {0.:'Body',1.:'Liver',2.:'Cyst',3.:'Lung',4.:'Heart',5.:'Bg'}
-
 classes = ['Bg','Body','Liver','Cyst','Lung','Heart','Spleen','Aorta','Kidney','IVC']
 classesDict = {0.:'Bg',1.:'Body',2.:'Liver',3.:'Cyst',4.:'Lung',5.:'Heart',6.:'Spleen',7.:'Aorta',8.:'Kidney',9.:'IVC'}
 
@@ -139,38 +138,45 @@ classesDict = {0.:'Bg',1.:'Body',2.:'Liver',3.:'Cyst',4.:'Lung',5.:'Heart',6.:'S
 # Setup the model and pretrain
 
 # backbone = torchvision.models.mobilenet_v2(pretrained=True).features
-backbone = torchvision.models.resnet101(pretrained=True).features
-backbone.out_channels = 1280
+backbone = torchvision.models.mobilenet_v3_large(pretrained=True).features
+# backbone = torchvision.models.resnet34(pretrained=True)
+# backbone = torchvision.models.densenet121(pretrained=True).features
+# backbone = torchvision.models.vgg11_bn(pretrained=True).features
+
+# backbone = torch.nn.Sequential(*(list(backbone.children())[:-2])) # needed for vgg11_bn and resnet34
+
+# backbone.out_channels = 1280 # mobilenet_v2
+# backbone.out_channels = 1024 # densenet121
+backbone.out_channels = 960 # mobilenet_v3_large
+# backbone.out_channels = 512 # vgg11_bn or resnet34
 
 anchorGen = AnchorGenerator(sizes=((32,64,128,256,512),),aspect_ratios=((0.5,1.0,2.0),))
-# roiPooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0],output_size=7,sampling_ratio=2)
+# # roiPooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0],output_size=7,sampling_ratio=2)
 
 model = FasterRCNN(backbone,num_classes=len(classes),rpn_anchor_generator=anchorGen)#,box_roi_pool=roiPooler)
 
+print(backbone)
+print("#"*50)
+print(model)
+
+sys.exit()
+
 model.to(device)
 
-#targetDictList = []
-#for ts in sample['labels']:
-#    newTargets = ts.numpy()
-#    targetDict = {}
-#    newBoxes = np.zeros((newTargets.shape[0],4))
-#    newLabels = np.zeros(newTargets.shape[0])
-#    for ii,cl in enumerate(newTargets):
-#        newBoxes[ii,:] = cl[:4]
-#        newLabels[ii] = cl[4]
-#    targetDict['boxes'] = torch.tensor(newBoxes,dtype=torch.float32,device=device)
-#    targetDict['labels'] = torch.tensor(newLabels,dtype=torch.int64,device=device)
-#    targetDictList.append(targetDict)
-#
-#tempImgs = []
-#for imgTS in sample['image']:
-#    imgTS = imgTS.float()
-#    tempImgs.append(imgTS.to(device))
+# def weights_init(m):
+#     if isinstance(m, nn.Conv2d):
+#         xavier_uniform_(m.weight.data)
+#         print(m)
+#         if m.bias is not None:
+#             zeros_(m.bias.data)
+#     if isinstance(m, nn.Linear):
+#         xavier_uniform_(m.weight.data)
+#         if m.bias.data is not None:
+#             zeros_(m.bias.data)   
 
-#writer.add_graph(model,(tempImgs,targetDictList))
+# model.apply(weights_init)
 
 print("\n\33[1;33;40m",model,"\n")
-#writer.close()
 
 
 #################################################
@@ -183,7 +189,7 @@ print('#'*50)
 
 
 t0 = time.time()
-numEpochs = 1000
+numEpochs = 100
 optimizer = optim.Adam(model.parameters(),lr=0.001)
 bestLoss = 1000000000.0
 
@@ -216,6 +222,8 @@ for epoch in range(numEpochs):
             imgTS = imgTS.float()
             newImgs.append(imgTS.to(device))
 
+        print(newImgs,targetDictList)
+        sys.exit()
         lossDict = model(newImgs,targetDictList)
         losses = sum(loss for loss in lossDict.values())
 
@@ -292,5 +300,9 @@ for epoch in range(numEpochs):
 
     else:
         print("\n\33[1;31;40m Val loss is higher, \33[1;33;40m{:.8f} > {:.8f}".format(avgLoss,bestLoss))
-
+        torch.save({'epoch':epoch,
+                    'model_state_dict':model.state_dict(),
+                    'optimizer_state_dict':optimizer.state_dict(),
+                    'loss':bestLoss
+                    },"./models/{}_latest.pt".format(modelSaveName))
 print('Finished Training')

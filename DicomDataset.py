@@ -4,6 +4,7 @@ import os, csv, copy
 
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 
 import pandas as pd
 import pydicom
@@ -27,9 +28,9 @@ class DicomDataset(Dataset):
 
         self.rootDir = rootDir
         self.transform = transform
-        # self.classDict = {'Body':0,'Liver':1,'Cyst':2,'Lung':3,'Heart':4,
-        #                    'Body ':0,'Liver ':1,'Cyst ':2,'Lung ':3,'Heart ':4}
-        # self.classDict = {'Body':1,'Liver':2,'Cyst':3,'Lung':4,'Heart':5,'Body ':1,'Liver ':2,'Cyst ':3,'Lung ':4,'Heart ':5}
+
+        self.classDict = {'Bg':0,'Body':1,'Liver':2,'Cyst':3,'Lung':4,'Heart':5,
+                            'Bg ':0,'Body ':1,'Liver ':2,'Cyst ':3,'Lung ':4,'Heart ':5}
         
         self.classDict = {'Bg':0,'Body':1,'Liver':2,'Cyst':3,'Lung':4,'Heart':5,'Spleen':6,'Aorta':7,'Kidney':8,'IVC':9,
                             'Bg ':0,'Body ':1,'Liver ':2,'Cyst ':3,'Lung ':4,'Heart ':5,'Spleen ':6,'Aorta ':7,'Kidney ':8,'IVC ':9}
@@ -76,12 +77,16 @@ class DicomDataset(Dataset):
         labels = labels.reshape(-1,5)
 
         for i in range(len(labels)):
-            labelsCopy = copy.deepcopy(labels[i,:])
-            labelsCopy[:4] = labels[i,1:]
-            labelsCopy[4] = labels[i,0]
-            labels[i,:] = labelsCopy
+            # if "IVC" in self.classDict.keys():
+            #     labelsCopy = copy.deepcopy(labels[i,:])
+            #     labelsCopy[:4] = labels[i,1:]
+            #     labelsCopy[4] = labels[i,0]
+            #     labels[i,:] = labelsCopy
+
             if pd.isna(labels[i,4]):
                 break
+
+
             labels[i,4] = self.classDict[labels[i,4]]
 
 
@@ -196,6 +201,16 @@ class ToTensor(object):
         image, labels = sample['image'], sample['labels']
         image = image.transpose((2,0,1))
         return {'image': torch.from_numpy(image),'labels': torch.from_numpy(labels)}
+
+class Normalise(object):
+
+    def __init__(self):
+
+        self.normImg = transforms.Normalize([23.15050654, 51.43708248, 17.58093937],[33.52329497, 84.62633451, 29.45570738],inplace=True)
+
+    def __call__(self,sample):
+        img = sample['image'].float()
+        return {'image':self.normImg(img),'labels':sample['labels']}
 
 def collate_var_rois(sampleBatch):
     img = [item['image'] for item in sampleBatch]
