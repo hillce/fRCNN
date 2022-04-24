@@ -1,5 +1,20 @@
 # Config script - Edit these names if you have different tags
 
+classes = [
+    'Bg',
+    'Body',
+    'Liver',
+    'Cyst',
+    'Lung',
+    'Heart',
+    'Spleen',
+    'Aorta',
+    'Kidney',
+    'IVC'
+]
+
+
+
 classDict = {
     'Bg':0,
     'Body':1,
