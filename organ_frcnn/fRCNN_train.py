@@ -1,6 +1,8 @@
+import argparse
 import time
 import copy
 import os
+from organ_frcnn.fRCNN_final import arg_parser
 import utils
 import math
 import sys
@@ -26,6 +28,7 @@ from fRCNN_func import collate_var_rois, reduce_dict
 def progressBar(batchSize,curIdx,totSetSize,lossVal,tEpoch,t0,stepTotal=10):
     idxMax = totSetSize/batchSize
     chunks = np.arange(0,idxMax,idxMax/(stepTotal))
+    t1 = time.time()
     #print(chunks)
     #print(curIdx)
     for ii,val in enumerate(chunks):
@@ -34,9 +37,64 @@ def progressBar(batchSize,curIdx,totSetSize,lossVal,tEpoch,t0,stepTotal=10):
             break
         if curIdx >= chunks[-1]:
             progVal = len(chunks)
-    sys.stdout.write("\r" + "\33[1;37;40m Progress: [{}>{}] {}/{}, Current loss = \33[1;33;40m{:.8f}\33[1;37;40m, Epoch Time: \33[1;33;40m{:.3f} s\33[1;37;40m, Total Time Elapsed: \33[1;33;40m{}\33[1;37;40m".format((progVal-1)*'=',(stepTotal-progVal)*'.',curIdx*batchSize,totSetSize-1,lossVal,time.time()-tEpoch,time.strftime("%H:%M:%S",time.gmtime(time.time()-t0))))
+    sys.stdout.write("\r" + f"\33[1;37;40m Progress: [{(progVal-1)*'='}>{(stepTotal-progVal)*'.'}] {curIdx*batchSize}/"
+                     f"{totSetSize-1}, Current loss = \33[1;33;40m{lossVal:.8f}\33[1;37;40m, "
+                     f"Epoch Time: \33[1;33;40m{t1-tEpoch:.3f} s\33[1;37;40m, "
+                     f"Total Time Elapsed: \33[1;33;40m{time.strftime('%H:%M:%S',time.gmtime(t1-t0))}\33[1;37;40m")
 
 os.system('cls')
+
+def train_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model_name",
+        help="Name to save the model to.",
+        type=str,
+        required=True
+    )
+    parser.add_argument(
+        "--data_path",
+        help="Data directory path",
+        type=str,
+        default="D:/UKB_Liver/20204_2_0"
+    )
+    parser.add_argument(
+        "--model_choice",
+        help="The fRCNN backbone to train.",
+        type=str,
+        default="mobilenet_v3",
+        choices=["mobilenet_v3", "mobilenet_v2", "resnet34", "densenet121", "vgg11_bn"]
+    )
+    parser.add_argument(
+        "--pretrained",
+        help="Don't use imagenet pretrained backbone.",
+        action="store_false",
+        default=True
+    )
+    parser.add_argument(
+        "--lr",
+        help="Learning rate for network",
+        type=float,
+        default=1e-3
+    )
+    parser.add_argument(
+        "--b_size",
+        help="Batch size for training.",
+        type=int,
+        default=4
+    )
+    parser.add_argument(
+        "-d",
+        "--device",
+        help="Device to use, assumes a single device available"
+        type=str
+        
+    )
+
+    args = parser.parse_args()
+
+    return args
+
 
 print("#"*50)
 print(" Parameter Setup")

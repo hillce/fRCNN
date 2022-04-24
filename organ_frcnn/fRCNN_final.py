@@ -30,27 +30,29 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from DicomDataset import DicomDataset, Rescale, ToTensor, RandomCrop
 from fRCNN_func import collate_var_rois
+from config import classDict, textDict, colorDict
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-d','--device',nargs='?',metavar='D',type=str,default="cuda:0",choices=["cuda:0","cpu"],help='Select device to use: cuda:0 or cpu')
-parser.add_argument('-b','--batch_size',nargs='?',metavar='B',type=int,default=2,help='Choose batch size for the network. Higher batch sizes, use more memory')
-parser.add_argument('-s','--start',nargs='?',metavar='S',type=int,default=0,help='Choose start point to compute boxes for csv')
-parser.add_argument('--step',nargs='?',metavar='ST',type=int,default=0,help='Choose number of dicoms to process in one go.')
-parser.add_argument('-m','--model',metavar='MOD',type=str,default='Random_Validation_2',help='Learnt model to run')
-parser.add_argument('-dir',nargs='?',metavar='DIR',type=str,default='D:/UKB_Liver/20204_2_0',help='Directory to search for DICOM files')
 
-args = parser.parse_args()
+def arg_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--device', type=str, default="cuda:0", choices=["cuda:0","cpu"], help='Select device to use: cuda:0 or cpu')
+    parser.add_argument('-b', '--batch_size', type=int, default=2, help='Choose batch size for the network. Higher batch sizes, use more memory')
+    parser.add_argument('-s', '--start', type=int, default=0, help='Choose start point to compute boxes for csv')
+    parser.add_argument('--step', type=int, default=0, help='Choose number of dicoms to process in one go.')
+    parser.add_argument('--model_name', type=str, default='Random_Validation_2', help='Name of learnt model to run')
+    parser.add_argument('-dir', type=str, default='D:/UKB_Liver/20204_2_0', help='Directory to search for DICOM files')
 
-print("Parsed Arguments: ",args.device,args.batch_size,args.start,args.step,args.model)
+    args = parser.parse_args()
 
-classDict = {'Bg':0,'Body':1,'Liver':2,'Cyst':3,'Lung':4,'Heart':5,'Spleen':6,'Aorta':7,'Kidney':8,'IVC':9,
-                    'Bg ':0,'Body ':1,'Liver ':2,'Cyst ':3,'Lung ':4,'Heart ':5,'Spleen ':6,'Aorta ':7,'Kidney ':8,'IVC ':9}
+    print("Parsed Arguments: ",args.device,args.batch_size,args.start,args.step,args.model)
 
-colorDict = {1:"tab:blue",2:"tab:green",3:"tab:orange",4:"tab:red",5:"tab:purple",6:"tab:brown",7:"tab:pink",8:"tab:olive",9:"tab:cyan"}
-textDict = {1:'Body',2:'Liver',3:'Cyst',4:'Lung',5:'Heart',6:'Spleen',7:'Aorta',8:'Kidney',9:'IVC'}
+    return args
 
+
+
+if model_type == "mobilenet_v3_large":
 # backbone = torchvision.models.mobilenet_v2(pretrained=True).features
-backbone = torchvision.models.mobilenet_v3_large(pretrained=False).features
+    backbone = torchvision.models.mobilenet_v3_large(pretrained=False).features
 # backbone = torchvision.models.resnet34(pretrained=True)
 # backbone = torchvision.models.densenet121(pretrained=True).features
 # backbone = torchvision.models.vgg11_bn(pretrained=True).features
