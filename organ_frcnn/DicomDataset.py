@@ -48,14 +48,17 @@ class DicomDataset(Dataset):
 
             CSV structure:
 
-                data.cav
+                train.cav
 
                 DICOM FOLDER NAME 1, CLASS 1, x0, y0, x1, y1, CLASS 2, ... etc.
                 DICOM FOLDER NAME 2, CLASS 1, x0, y0, x1, y1, CLASS 4, ... etc.
                 ...
 
+                val.csv
+                test.csv
+
             CALL:
-                DicomDataset("data.csv", "/path/to/dicom/folders/, transform=train_transforms)
+                DicomDataset("train.csv", "/path/to/dicom/folders/, transform=train_transforms)
 
 
         """
