@@ -2,16 +2,15 @@
 
 import os
 
-import torch
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pydicom
-import numpy as np
-import matplotlib.pyplot as plt
-import cv2
+import torch
 from skimage import transform
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
 
 from config import classDict, imgMean, imgStd
 
@@ -24,15 +23,40 @@ class DicomDataset(Dataset):
         csvFile: str,
         rootDir: str,
         transform=None,
-        maxRegions=10,
         img_dtype=np.float16):
         """
         Args:
             csvFile (str): Path to data.csv with name and x,y coordinates
             rootDir (str): Path to directory for all the dicoms
             transform (callable, optional): Optional transform to be applied on a sample.
-            maxRegions (): ...
             img_dtype (type): the dtype to be applied to the image.
+
+        Example Usage:
+
+            Folder structure:
+
+                /path/to/dicom/folders
+                            |
+                            - DICOM FOLDER NAME 1
+                                        |
+                                        - 0001.dcm
+                                        - 0002.dcm
+                                        ....
+                            - DICOM FOLDER NAME 2
+                            ...
+
+
+            CSV structure:
+
+                data.cav
+
+                DICOM FOLDER NAME 1, CLASS 1, x0, y0, x1, y1, CLASS 2, ... etc.
+                DICOM FOLDER NAME 2, CLASS 1, x0, y0, x1, y1, CLASS 4, ... etc.
+                ...
+
+            CALL:
+                DicomDataset("data.csv", "/path/to/dicom/folders/, transform=train_transforms)
+
 
         """
         self.data = pd.read_csv(csvFile,header=None)
@@ -40,7 +64,6 @@ class DicomDataset(Dataset):
         self.rootDir = rootDir
         self.transform = transform
         self.classDict = classDict
-        self.maxRegions = maxRegions
         self.img_dtype = img_dtype
 
     def __len__(self):
@@ -221,13 +244,3 @@ def collate_var_rois(sampleBatch):
     labels = [item['labels'] for item in sampleBatch]
     sample = {'image':img,'labels':labels}
     return sample
-
-if __name__ == "__main__":
-    ds = DicomDataset('data.csv','C:/Users/shug4421/UKB_Liver/ShMOLLI/data')
-    sample = ds.__getitem__(0)
-
-    plt.figure()
-    plt.imshow(sample['image'])
-    print(sample['image'].shape[:2])
-    print(sample['labels'])
-    plt.show()
