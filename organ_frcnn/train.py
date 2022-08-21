@@ -1,27 +1,26 @@
 import argparse
-from operator import mod
-from typing import Type, Union
-import time
 import math
 import sys
+import time
+from operator import mod
+from typing import Type, Union
 
 import numpy as np
-
 import torch
+import torch.nn as nn
+import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
+from torch.nn.init import xavier_uniform_, zeros_
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
-from torch.utils.data import DataLoader
-import torch.optim as optim
-from torch.nn.init import xavier_uniform_, zeros_
-import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 
-from organ_frcnn.DicomDataset import DicomDataset, Rescale, ToTensor, Normalise, RandomCrop
-from organ_frcnn.fRCNN_func import collate_var_rois, reduce_dict
 from organ_frcnn.config import classes
-from organ_frcnn.utils import progressBar
+from organ_frcnn.DicomDataset import (DicomDataset, Normalise, RandomCrop,
+                                      Rescale, ToTensor, collate_var_rois)
+from organ_frcnn.utils import progressBar, reduce_dict
 
 
 def train_args():
