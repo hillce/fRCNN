@@ -1,7 +1,9 @@
 import sys
 import time
 import typing as t
+import os
 
+import pydicom
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -42,6 +44,46 @@ def progressBar(
                      f"Epoch Time: \33[1;33;40m{t1-tEpoch:.3f} s\33[1;37;40m, "
                      f"Total Time Elapsed: \33[1;33;40m{time.strftime('%H:%M:%S',time.gmtime(t1-t0))}\33[1;37;40m")
 
+
+def load_image(
+    subName: str,
+    direc: str,
+    grayscale: bool = False
+) -> np.ndarray:
+    """Loads the RGB version of a shMOLLI acquisition from UKBB, using instance times
+
+    Args:
+        subName (str): dicom folder name in the data directory
+        direc (str): path to the dicom directory
+        grayscale (bool, optional): Whether to just return a grayscale version of the image. Defaults to False.
+
+    Returns:
+        img (np.ndarray): The numpy ndarray of the image
+    """
+    dcmList = [os.path.join(direc,subName,x) for x in os.listdir(os.path.join(direc,subName))]
+    instTime = {}    
+    for dicom in dcmList:
+        ds = pydicom.dcmread(dicom,stop_before_pixels=True)
+        if 'M' in ds.ImageType:
+            instTime[float(ds.InstanceCreationTime)] = dicom
+
+    keys = np.sort(list(instTime.keys()),axis=None)
+    ds = pydicom.dcmread(instTime[keys[0]])
+    img0 = ds.pixel_array
+
+    img = np.zeros((img0.shape[0],img0.shape[1],3))
+    img[:,:,0] = img0
+
+    ds = pydicom.dcmread(instTime[keys[3]])
+    img[:,:,1] = ds.pixel_array
+
+    ds = pydicom.dcmread(instTime[keys[6]])
+    img[:,:,2] = ds.pixel_array
+
+    if grayscale:
+        img = img[:,:,1]
+
+    return img
 
 
 def is_dist_avail_and_initialized() -> bool:
