@@ -133,3 +133,51 @@ def area_to_body_ratio(
     ratioDf = ratioDf.T
 
     return ratioDf
+
+
+def IoU(coords0,coords1):
+    bM0 = np.zeros((288,384))
+    bM1 = np.zeros((288,384))
+
+    for i in range(288):
+        for j in range(384):
+            if i >= coords0[1] and i < coords0[3]:
+                if j >= coords0[0] and j < coords0[2]:
+                    bM0[i,j] = 1
+            if i >= coords1[1] and i < coords1[3]:
+                if j >= coords1[0] and j < coords1[2]:
+                    bM1[i,j] = 1
+
+    intersect = np.logical_and(bM0,bM1)
+    union = np.logical_or(bM0,bM1)  
+
+    iou = np.sum(intersect)/np.sum(union)
+    return iou
+
+
+def recall_curve(iou_dict: t.Dict, cl: t.Union[t.Type[None], int] = None):
+    iouRange = np.arange(0,1,0.01)
+    iouRange = iouRange[1:]
+    recallCurve = np.zeros_like(iouRange)
+
+    for i,iou in enumerate(iouRange):
+        tp = 0
+        fn = 0
+
+        for j, case_iou in iou_dict.items():
+            for org in case_iou.keys():
+                if cl:
+                    if org == cl:
+                        if case_iou[org] >= iou:
+                            tp += 1
+                        else:
+                            fn += 1
+                else:
+                    if case_iou[org] >= iou:
+                        tp += 1
+                    else:
+                        fn += 1
+
+        recallCurve[i] = tp/(tp+fn)
+
+    return recallCurve, iouRange
