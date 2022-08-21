@@ -12,8 +12,8 @@ from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from torch.utils.data import DataLoader
 
-from organ_frcnn.DicomDataset import DicomDataset, Rescale, ToTensor, Normalise, collate_var_rois
-from organ_frcnn.config import classes, colorDict, textDict
+from DicomDataset import DicomDataset, Rescale, ToTensor, Normalise, collate_var_rois
+from config import classes, colorDict, textDict
 
 def predict_args():
     """
@@ -110,8 +110,8 @@ def predict(
     test_transforms = transforms.Compose(
         [
             Rescale(288),
-            Normalise(),
-            ToTensor()
+            ToTensor(),
+            Normalise()
         ]
     )
 
@@ -130,24 +130,24 @@ def predict(
     # Setup the model and pretrain
 
     if model_backbone == 'mobilenet_v2':
-        backbone = torchvision.models.mobilenet_v2(pretrained=False).features
+        backbone = torchvision.models.mobilenet_v2().features
         backbone.out_channels = 1280
 
     elif model_backbone == 'mobilenet_v3':
-        backbone = torchvision.models.mobilenet_v3_large(pretrained=False).features
+        backbone = torchvision.models.mobilenet_v3_large().features
         backbone.out_channels = 960
 
     elif model_backbone == 'resnet34':
-        backbone = torchvision.models.resnet34(pretrained=False)
+        backbone = torchvision.models.resnet34()
         backbone = torch.nn.Sequential(*(list(backbone.children())[:-2])) # needed for vgg11_bn and resnet34
         backbone.out_channels = 512
 
     elif model_backbone == 'densenet121':
-        backbone = torchvision.models.densenet121(pretrained=False).features
+        backbone = torchvision.models.densenet121().features
         backbone.out_channels = 1024
 
     elif model_backbone == 'vgg11':
-        backbone = torchvision.models.vgg11_bn(pretrained=False).features
+        backbone = torchvision.models.vgg11_bn().features
         backbone = torch.nn.Sequential(*(list(backbone.children())[:-2])) # needed for vgg11_bn and resnet34
         backbone.out_channels = 512
 
@@ -179,6 +179,7 @@ def predict(
 
     with torch.no_grad():
         for i, data in enumerate(testLoader):
+            print(f"Predicting for {i}: ")
             newImgs = []
             for imgTS in data['image']:
                 imgTS = imgTS.float()
@@ -194,12 +195,19 @@ def predict(
                 _, ax = plt.subplots(1)
                 img = img.numpy()
                 img = np.transpose(img,(1,2,0))
-                ax.imshow(img[:,:,1],vmax=img[:,:,1].max()/2)
+                ax.imshow(img[:,:,1],vmax=img[:,:,1].max()/2, cmap="gray")
 
                 for lb,coord,sc in zip(label,boxCoord,scores):
                     if sc > threshold:
                         plt.text(coord[0]-2,coord[1]-2,textDict[lb],color=colorDict[lb])
                         rect = patches.Rectangle((coord[0],coord[1]),coord[2]-coord[0],coord[3]-coord[1],linewidth=1,edgecolor=colorDict[lb],facecolor='none')
                         ax.add_patch(rect)
+                
+                ax.axis("off")
                 plt.savefig(os.path.join(output_directory,f"{i}.png"))
                 plt.close("all")
+
+            # print(f"\t {boxCoord}, {label}, {scores}")
+
+if __name__ == "__main__":
+    predict_args()
