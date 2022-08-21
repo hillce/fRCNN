@@ -1,33 +1,21 @@
 import argparse
-import time
-import copy
 import typing as t
 import os
-import utils
-import math
-import sys
 
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from PIL import Image
-
 import torch
-import torch.distributed as dist
-
 import torchvision
 import torchvision.transforms as transforms
 from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
-from torch.utils.data import Dataset, DataLoader
-import torch.optim as optim
+from torch.utils.data import DataLoader
 
-from torch.utils.tensorboard import SummaryWriter
 from organ_frcnn.DicomDataset import DicomDataset, Rescale, ToTensor, Normalise, collate_var_rois
-from organ_frcnn.config import classes, classDict, colorDict, textDict
+from organ_frcnn.config import classes, colorDict, textDict
 
-def test_args():
+def predict_args():
     """
 
     Argparser for test function for fRCNN
@@ -35,18 +23,66 @@ def test_args():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model_name",
-        help="Name of the model to load and test",
+        "--data_path",
+        help="Path to data directory",
         type=str,
         required=True
     )
+    parser.add_argument(
+        "--state_dict_path",
+        help="Path to the model to load",
+        type=str,
+        required=True
+    )
+    parser.add_argument(
+        "--output_directory",
+        help="Path to directory to save images to.",
+        type=str,
+        required=True
+    )
+    parser.add_argument(
+        "--threshold",
+        help="Threshold to use for success event of bounding box. Defaults to 0.5",
+        type=float,
+        default=0.5
+    )
+    parser.add_argument(
+        "--device",
+        help="Device to run prediction on. Defaults to None, (auto selection)",
+        default=None
+    )
+    parser.add_argument(
+        "--predict_csv",
+        help="csv file containing the study_ids (sub-folders in data_path) which predictions are needed for",
+        type=str,
+        default="predict.csv"
+    )
+    parser.add_argument(
+        "--model_backbone",
+        help="The model backbone to use for the fRCNN",
+        choices=['mobilenet_v2', 'mobilenet_v3', 'resnet34', 'densenet121', 'vgg11'],
+        type=str,
+        default="mobilenet_v3"
+    )
+    args = parser.parse_args()
 
-def test(
+    predict(
+        data_path=args.data_path,
+        state_dict_path=args.state_dict_path,
+        output_directory=args.output_directory,
+        threshold=args.threshold,
+        device=args.device,
+        predict_csv=args.predict_csv,
+        model_backbone=args.model_backbone
+    )
+
+def predict(
     data_path: str,
     state_dict_path: str, # './models/extra_classes.pt'
-    batch_size: int = 4,
+    output_directory: str,
+    threshold: float = 0.5,
     device: t.Union[t.Type[None], str] = None,
-    test_csv: str = "test.csv",
+    predict_csv: str = "predict.csv",
     model_backbone: str = 'mobilenet_v3',
 ):
     assert model_backbone in ['mobilenet_v2', 'mobilenet_v3', 'resnet34', 'densenet121', 'vgg11'], \
@@ -79,8 +115,8 @@ def test(
         ]
     )
 
-    testDataset = DicomDataset(test_csv,data_path,transform=test_transforms)
-    testLoader = DataLoader(testDataset,batch_size=batch_size,shuffle=True,collate_fn=collate_var_rois)
+    testDataset = DicomDataset(predict_csv,data_path,transform=test_transforms)
+    testLoader = DataLoader(testDataset,batch_size=1,shuffle=True,collate_fn=collate_var_rois)
 
 
     #################################################
@@ -133,7 +169,7 @@ def test(
     print(' Loading Trained Model')
     print('#'*50)
 
-    checkpoint = torch.load(state_dict_path)
+    checkpoint = torch.load(state_dict_path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     del checkpoint
 
@@ -142,34 +178,28 @@ def test(
 
 
     with torch.no_grad():
-        dataiter = iter(testLoader)
-        sample = dataiter.next()
-        newImgs = []
-        for imgTS in sample['image']:
-            imgTS = imgTS.float()
-            newImgs.append(imgTS.to(device))
-        output = model(newImgs)
+        for i, data in enumerate(testLoader):
+            newImgs = []
+            for imgTS in data['image']:
+                imgTS = imgTS.float()
+                newImgs.append(imgTS.to(device))
+            output = model(newImgs)
 
-        for pred,img in zip(output,sample['image']):
+            for pred,img in zip(output, data['image']):
 
-            if device == torch.device("cuda:0"):
-                boxCoord = pred['boxes'].cpu()
-                boxCoord = boxCoord.detach().numpy()
-            else:
-                boxCoord = pred['boxes'].detach().numpy()
-            label = pred['labels'].cpu().detach().numpy()
-            scores = pred['scores'].cpu().detach().numpy()
+                boxCoord = pred['boxes'].cpu().detach().numpy()
+                label = pred['labels'].cpu().detach().numpy()
+                scores = pred['scores'].cpu().detach().numpy()
 
-            print(pred)
+                _, ax = plt.subplots(1)
+                img = img.numpy()
+                img = np.transpose(img,(1,2,0))
+                ax.imshow(img[:,:,1],vmax=img[:,:,1].max()/2)
 
-            fig, ax = plt.subplots(1)
-            img = img.numpy()
-            img = np.transpose(img,(1,2,0))
-            #ax.imshow(np.transpose(img,axes=[1,2,0]))
-            ax.imshow(img[:,:,:],vmax=img[:,:,:].max()/2)
-            for lb,coord,sc in zip(label,boxCoord,scores):
-                if sc > 0.5:
-                    plt.text(coord[0]-2,coord[1]-2,textDict[lb],color=colorDict[lb])
-                    rect = patches.Rectangle((coord[0],coord[1]),coord[2]-coord[0],coord[3]-coord[1],linewidth=1,edgecolor=colorDict[lb],facecolor='none')
-                    ax.add_patch(rect)
-            plt.show()
+                for lb,coord,sc in zip(label,boxCoord,scores):
+                    if sc > threshold:
+                        plt.text(coord[0]-2,coord[1]-2,textDict[lb],color=colorDict[lb])
+                        rect = patches.Rectangle((coord[0],coord[1]),coord[2]-coord[0],coord[3]-coord[1],linewidth=1,edgecolor=colorDict[lb],facecolor='none')
+                        ax.add_patch(rect)
+                plt.savefig(os.path.join(output_directory,f"{i}.png"))
+                plt.close("all")
