@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import os
+import typing as t
 
 import cv2
 import matplotlib.pyplot as plt
@@ -242,7 +243,15 @@ class Normalise(object):
         img = sample['image'].float()
         return {'image':self.normImg(img),'labels':sample['labels']}
 
-def collate_var_rois(sampleBatch):
+def collate_var_rois(sampleBatch: t.List) -> t.Dict: #Collate Function for DataLoader
+    """Collate Function for Data Loader
+
+    Args:
+        sampleBatch (t.List): List of dictionarys [tensors and labels]
+
+    Returns:
+        sample (t.Dict): Dictionary of lists [tensors and labels]
+    """
     img = [item['image'] for item in sampleBatch]
     labels = [item['labels'] for item in sampleBatch]
     sample = {'image':img,'labels':labels}
