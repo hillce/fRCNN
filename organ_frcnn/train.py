@@ -17,10 +17,10 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 
-from organ_frcnn.config import classes
-from organ_frcnn.DicomDataset import (DicomDataset, Normalise, RandomCrop,
+from config import classes
+from DicomDataset import (DicomDataset, Normalise, RandomCrop,
                                       Rescale, ToTensor, collate_var_rois)
-from organ_frcnn.utils import progressBar, reduce_dict
+from utils import progressBar, reduce_dict
 
 
 def train_args():
@@ -66,6 +66,7 @@ def train_args():
         "--num_epochs",
         help="Number of epochs to train model for.",
         default=100,
+        type=int,
         dest="num_epochs"
     )
     parser.add_argument(
@@ -128,8 +129,8 @@ def train(
     device: Union[Type[None], str] = None,
     model_backbone: str = 'mobilenet_v3',
     num_epochs: int = 100,
-    step_total_train: int = 40,
-    step_total_val: int = 10,
+    step_total_train: int = 1,
+    step_total_val: int = 1,
     random_crop: bool = False
     ):
     """Train function for fRCNN
@@ -181,24 +182,24 @@ def train(
             [
                 Rescale(288),
                 RandomCrop(256),
-                Normalise(),
-                ToTensor()
+                ToTensor(),
+                Normalise()
             ]
         )
     else:
         transforms_train = transforms.Compose(
             [
                 Rescale(288),
-                Normalise(),
-                ToTensor()
+                ToTensor(),
+                Normalise()
             ]
         )
 
     transforms_val = transforms.Compose(
         [
             Rescale(288),
-            Normalise(),
-            ToTensor()
+            ToTensor(),
+            Normalise()
         ]
     )
 
@@ -234,7 +235,7 @@ def train(
         backbone.out_channels = 1280
 
     elif model_backbone == 'mobilenet_v3':
-        backbone = torchvision.models.mobilenet_v3_large(pretrained=pretrained).features
+        backbone = torchvision.models.mobilenet_v3_large(weights=torchvision.models.MobileNet_V3_Large_Weights.DEFAULT).features
         backbone.out_channels = 960
 
     elif model_backbone == 'resnet34':
