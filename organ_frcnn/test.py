@@ -1,159 +1,231 @@
-import time
-import copy
-import os
-import math
 import sys
-import csv
 import argparse
-import json
-import datetime
+import typing as t
 
-import numpy as np
 import pandas
-import utils
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from PIL import Image
-import pydicom
-
+import seaborn as sns
 import torch
-import torch.distributed as dist
-
 import torchvision
 import torchvision.transforms as transforms
 from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
-from torch.utils.data import Dataset, DataLoader
-import torch.optim as optim
+from torch.utils.data import DataLoader
 
-from torch.utils.tensorboard import SummaryWriter
-from DicomDataset import DicomDataset, Rescale, ToTensor, RandomCrop
-from fRCNN_func import collate_var_rois
-from config import classDict, textDict, colorDict
+from DicomDataset import DicomDataset, Rescale, ToTensor, Normalise, collate_var_rois
+from config import classes
+from metrics import IoU, recall_curve
 
 
-def arg_parser():
+def test_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--device', type=str, default="cuda:0", choices=["cuda:0","cpu"], help='Select device to use: cuda:0 or cpu')
-    parser.add_argument('-b', '--batch_size', type=int, default=2, help='Choose batch size for the network. Higher batch sizes, use more memory')
-    parser.add_argument('-s', '--start', type=int, default=0, help='Choose start point to compute boxes for csv')
-    parser.add_argument('--step', type=int, default=0, help='Choose number of dicoms to process in one go.')
-    parser.add_argument('--model_name', type=str, default='Random_Validation_2', help='Name of learnt model to run')
-    parser.add_argument('-dir', type=str, default='D:/UKB_Liver/20204_2_0', help='Directory to search for DICOM files')
-
+    parser.add_argument(
+        "--data_path",
+        help="Path to data directory",
+        type=str,
+        required=True
+    )
+    parser.add_argument(
+        "--state_dict_path",
+        help="Path to the model to load",
+        type=str,
+        required=True
+    )
+    parser.add_argument(
+        "--threshold",
+        help="Threshold to use for success event of bounding box. Defaults to 0.5",
+        type=float,
+        default=0.5
+    )
+    parser.add_argument(
+        "--device",
+        help="Device to run prediction on. Defaults to None, (auto selection)",
+        default=None
+    )
+    parser.add_argument(
+        "--test_csv",
+        help="csv file containing the study_ids (sub-folders in data_path) which predictions are needed for",
+        type=str,
+        default="predict.csv"
+    )
+    parser.add_argument(
+        "--model_backbone",
+        help="The model backbone to use for the fRCNN",
+        choices=['mobilenet_v2', 'mobilenet_v3', 'resnet34', 'densenet121', 'vgg11'],
+        type=str,
+        default="mobilenet_v3"
+    )
     args = parser.parse_args()
 
-    print("Parsed Arguments: ",args.device,args.batch_size,args.start,args.step,args.model)
 
-    return args
+    test(
+        state_dict_path=args.state_dict_path,
+        data_path=args.data_path,
+        test_csv=args.test_csv,
+        device=args.device,
+        model_backbone=args.model_backbone,
+        threshold=args.threshold
+    )
 
 
+def test(
+    state_dict_path: str,
+    data_path: str,
+    test_csv: str,
+    device: t.Union[t.Type[None], str] = None,
+    model_backbone: str = 'mobilenet_v3',
+    threshold: float = 0.5
+):
+    assert model_backbone in ['mobilenet_v2', 'mobilenet_v3', 'resnet34', 'densenet121', 'vgg11'], \
+        "model_backbone invalid, please choose from ['mobilenet_v2', 'mobilenet_v3', 'resnet34', 'densenet121', 'vgg11']"
 
-if model_type == "mobilenet_v3_large":
-# backbone = torchvision.models.mobilenet_v2(pretrained=True).features
-    backbone = torchvision.models.mobilenet_v3_large(pretrained=False).features
-# backbone = torchvision.models.resnet34(pretrained=True)
-# backbone = torchvision.models.densenet121(pretrained=True).features
-# backbone = torchvision.models.vgg11_bn(pretrained=True).features
+    print("#"*50)
+    print(" Parameter Setup")
+    print("#"*50)
 
-# backbone = torch.nn.Sequential(*(list(backbone.children())[:-2])) # needed for vgg11_bn and resnet34
+    if device is None:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") # Setup Device Choice
+    else:
+        device = torch.device(device)
 
-# backbone.out_channels = 1280 # mobilenet_v2
-# backbone.out_channels = 1024 # densenet121
-backbone.out_channels = 960 # mobilenet_v3_large
-# backbone.out_channels = 512 # vgg11_bn or resnet34
+    print("\33[1;33;40m Run on device:\33[1;32;40m {}\n".format(device))
 
-anchorGen = AnchorGenerator(sizes=((32,64,128,256,512),),aspect_ratios=((0.5,1.0,2.0),))
+    ####################################################
+    ############### Data Loading Code ##################
+    ####################################################
 
-model = FasterRCNN(backbone,num_classes=10,rpn_anchor_generator=anchorGen)#,box_roi_pool=roiPooler)
+    print('\33[1;37;40m#'*50)
+    print(' Loading Data and setting up data generators')
+    print('#'*50)
 
-checkpoint = torch.load('./models/'+args.model+'.pt')
-model.load_state_dict(checkpoint['model_state_dict'])
-epoch = checkpoint['epoch']
-loss = checkpoint['loss']
-del checkpoint
+    test_transforms = transforms.Compose(
+        [
+            Rescale(288),
+            ToTensor(),
+            Normalise()
+        ]
+    )
 
-model.eval()
-model.to(args.device)
+    testDataset = DicomDataset(test_csv,data_path,transform=test_transforms)
+    testLoader = DataLoader(testDataset,batch_size=1,shuffle=True,collate_fn=collate_var_rois)
 
-folList = [os.path.join(args.dir,x) for x in os.listdir(args.dir) if os.path.isdir(os.path.join(args.dir,x))]
-# testList = pandas.read_csv("data_new.csv",header=None)
-# eids = testList[0]
-# folList = [os.path.join(args.dir,x) for x in eids]
 
-print("Number of shMOLLI acquisitions Found: {}".format(len(folList)))
+    #################################################
+    ###### Setup Model and Anchors ##################
+    #################################################
 
-if args.step:
-    folList = folList[args.start:(args.start+args.step)]
-    print("Processing Subset: {} -> {}".format(args.start,args.start + args.step))
-else:
-    folList = folList[args.start:]
-    print("Processing Subset: {} -> {}".format(args.start,len(folList)+args.start))
+    print('\33[1;37;40m#'*50)
+    print(' Setting up Model and Anchor Generator')
+    print('#'*50)
 
-if args.start == 0:
-    fileTag = 'w'
-else:
-    fileTag = 'a'
+    # Setup the model and pretrain
 
-dt = datetime.datetime.today()
-jsonFile = "Biobank_Bounding_Boxes_{}_{}_{}_{}.json".format(dt.year,dt.month,dt.day,args.model)
+    if model_backbone == 'mobilenet_v2':
+        backbone = torchvision.models.mobilenet_v2().features
+        backbone.out_channels = 1280
 
-with torch.no_grad():
-    overall_dict = {}
-    for ii,fol in enumerate(folList):
-        # try:
-        fol_dict = {}
-        sys.stdout.write("\r Completed {}/{}".format(ii,len(folList)))
-        dcmList = [os.path.join(fol,x) for x in os.listdir(fol) if x.endswith('.dcm')]
-        instTime = {}
-        for dicom in dcmList:
-            ds = pydicom.dcmread(dicom,stop_before_pixels=True)
-            if 'M' in ds.ImageType:
-                instTime[float(ds.InstanceCreationTime)] = dicom
+    elif model_backbone == 'mobilenet_v3':
+        backbone = torchvision.models.mobilenet_v3_large().features
+        backbone.out_channels = 960
 
-        keys = np.sort(list(instTime.keys()),axis=None)
-        ds = pydicom.dcmread(instTime[keys[0]])
-        img0 = ds.pixel_array
-        img = np.zeros((img0.shape[0],img0.shape[1],3))
-        img[:,:,0] = img0
+    elif model_backbone == 'resnet34':
+        backbone = torchvision.models.resnet34()
+        backbone = torch.nn.Sequential(*(list(backbone.children())[:-2])) # needed for vgg11_bn and resnet34
+        backbone.out_channels = 512
 
-        ds = pydicom.dcmread(instTime[keys[3]])
-        img[:,:,1] = ds.pixel_array
+    elif model_backbone == 'densenet121':
+        backbone = torchvision.models.densenet121().features
+        backbone.out_channels = 1024
 
-        ds = pydicom.dcmread(instTime[keys[6]])
-        img[:,:,2] = ds.pixel_array
-        
-        img = img[:,:,(2,1,0)].astype(int)
-        img = np.transpose(img,(2,0,1))
-        inp = torch.tensor(img)
-        inp = inp.float()
-        inp = inp.to(args.device)
-        inp.unsqueeze_(0)
-        output = model(inp)
+    elif model_backbone == 'vgg11':
+        backbone = torchvision.models.vgg11_bn().features
+        backbone = torch.nn.Sequential(*(list(backbone.children())[:-2])) # needed for vgg11_bn and resnet34
+        backbone.out_channels = 512
 
-        num = {x:0 for x in textDict.keys()}
-        for out in output:
-            boxCoord = out['boxes'].cpu()
-            boxCoord = boxCoord.numpy()
+    anchorGen = AnchorGenerator(sizes=((32,64,128,256,512),),aspect_ratios=((0.5,1.0,2.0),))
 
-            labels = out['labels'].cpu()
-            labels = labels.numpy()
+    model = FasterRCNN(
+        backbone,
+        num_classes=len(classes),
+        rpn_anchor_generator=anchorGen,
+    )
 
-            scores = out['scores'].cpu()
-            scores = scores.numpy()
-            for sublabel, subcoords,subScore in zip(labels,boxCoord,scores):
-                subcoords = np.append(subcoords, subScore)
-                label = "{}_{}".format(textDict[sublabel],num[sublabel])
-                num[sublabel] += 1
-                fol_dict[label] = list(map(float,subcoords))
-        
-        overall_dict[fol[-17:]] = fol_dict
+    #################################################
+    ###### Load Trained Model      ##################
+    #################################################
 
-        # except:
-        #     print("\nError in Folder: {}\n".format(fol[-17:]))
-        #     with open("Errors.txt",'a') as f:
-        #         f.write("\n{}\n".format(fol[-17:]))
+    print('\33[1;37;40m#'*50)
+    print(' Loading Trained Model')
+    print('#'*50)
 
-with open(jsonFile,'a') as f:
-    json.dump(overall_dict,f)
+    checkpoint = torch.load(state_dict_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    del checkpoint
+
+    model.eval()
+    model.to(device)
+
+    anchorGen = AnchorGenerator(sizes=((32,64,128,256,512),),aspect_ratios=((0.5,1.0,2.0),))
+    model = FasterRCNN(backbone,num_classes=10,rpn_anchor_generator=anchorGen)
+
+    checkpoint = torch.load(state_dict_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    del checkpoint
+
+    model.eval()
+    model.to(device)
+
+    with torch.no_grad():
+        metric_dict = {}
+        for ii, data in enumerate(testLoader):
+            sys.stdout.write("\r Completed {}/{}".format(ii,testDataset.__len__()))
+            newImgs = []
+            for imgTS in data['image']:
+                imgTS = imgTS.float()
+                newImgs.append(imgTS.to(device))
+            output = model(newImgs)
+
+            for pred, gt in zip(output, data['labels']):
+                sub_metric_dict = {}
+                boxCoord = pred['boxes'].cpu().detach().numpy()
+                label = pred['labels'].cpu().detach().numpy()
+                scores = pred['scores'].cpu().detach().numpy()
+
+                coord_label_pred = []
+                for cl, bC, sc in zip(label, boxCoord, scores):
+                    if sc > threshold:
+                        bC = list(bC)
+                        bC.append(float(cl))
+                        coord_label_pred.append(bC)
+
+
+                for val in coord_label_pred:
+                    if val[-1] not in gt[:, -1]:
+                        sub_metric_dict[val[-1]] = 0.0
+                    else:
+                        maxIoU = 0.0
+                        sub_organs = gt[gt[:, -1] == val[-1]]
+                        for jj in range(sub_organs.shape[0]):
+                            iou = IoU(sub_organs[jj, :], val[:-1])
+                            if iou >= maxIoU:
+                                maxIoU = iou
+                        sub_metric_dict[val[-1]] = maxIoU
+
+                metric_dict[ii] = sub_metric_dict
+
+    recallCurve, iouRange = recall_curve(metric_dict)
+
+    df = {"IoU":iouRange,"Recall":recallCurve,"Class":["Recall (All Classes)"]*iouRange.shape[0]}
+    df = pandas.DataFrame(df)
+
+    sns.set_context("talk")
+    sns.lineplot(data=df,x="IoU",y="Recall")
+    plt.show()
+
+if __name__ == "__main__":
+    # test_args()
+    test(
+        r"models\test_module_latest.pt",
+        r"D:\Data\shMOLLI_Data",
+        r"csv\train_module_test.csv",
+    )
