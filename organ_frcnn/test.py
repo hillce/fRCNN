@@ -223,9 +223,4 @@ def test(
     plt.show()
 
 if __name__ == "__main__":
-    # test_args()
-    test(
-        r"models\test_module_latest.pt",
-        r"D:\Data\shMOLLI_Data",
-        r"csv\train_module_test.csv",
-    )
+    test_args()
