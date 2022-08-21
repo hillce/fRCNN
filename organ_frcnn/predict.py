@@ -207,7 +207,79 @@ def predict(
                 plt.savefig(os.path.join(output_directory,f"{i}.png"))
                 plt.close("all")
 
-            # print(f"\t {boxCoord}, {label}, {scores}")
 
 if __name__ == "__main__":
     predict_args()
+
+    # folList = [os.path.join(data_path,x) for x in os.listdir(data_path) if os.path.isdir(os.path.join(data_path,x))]
+
+    # print("Number of shMOLLI acquisitions Found: {}".format(len(folList)))
+
+    # if args.step:
+    #     folList = folList[args.start:(args.start+args.step)]
+    #     print("Processing Subset: {} -> {}".format(args.start,args.start + args.step))
+    # else:
+    #     folList = folList[args.start:]
+    #     print("Processing Subset: {} -> {}".format(args.start,len(folList)+args.start))
+
+    # if args.start == 0:
+    #     fileTag = 'w'
+    # else:
+    #     fileTag = 'a'
+
+    # dt = datetime.datetime.today()
+    # jsonFile = "Biobank_Bounding_Boxes_{}_{}_{}_{}.json".format(dt.year,dt.month,dt.day,args.model)
+
+
+    #         dcmList = [os.path.join(fol,x) for x in os.listdir(fol) if x.endswith('.dcm')]
+    #         instTime = {}
+    #         for dicom in dcmList:
+    #             ds = pydicom.dcmread(dicom,stop_before_pixels=True)
+    #             if 'M' in ds.ImageType:
+    #                 instTime[float(ds.InstanceCreationTime)] = dicom
+
+    #         keys = np.sort(list(instTime.keys()),axis=None)
+    #         ds = pydicom.dcmread(instTime[keys[0]])
+    #         img0 = ds.pixel_array
+    #         img = np.zeros((img0.shape[0],img0.shape[1],3))
+    #         img[:,:,0] = img0
+
+    #         ds = pydicom.dcmread(instTime[keys[3]])
+    #         img[:,:,1] = ds.pixel_array
+
+    #         ds = pydicom.dcmread(instTime[keys[6]])
+    #         img[:,:,2] = ds.pixel_array
+            
+    #         img = img[:,:,(2,1,0)].astype(int)
+    #         img = np.transpose(img,(2,0,1))
+    #         inp = torch.tensor(img)
+    #         inp = inp.float()
+    #         inp = inp.to(args.device)
+    #         inp.unsqueeze_(0)
+    #         output = model(inp)
+
+    #         num = {x:0 for x in textDict.keys()}
+    #         for out in output:
+    #             boxCoord = out['boxes'].cpu()
+    #             boxCoord = boxCoord.numpy()
+
+    #             labels = out['labels'].cpu()
+    #             labels = labels.numpy()
+
+    #             scores = out['scores'].cpu()
+    #             scores = scores.numpy()
+    #             for sublabel, subcoords,subScore in zip(labels,boxCoord,scores):
+    #                 subcoords = np.append(subcoords, subScore)
+    #                 label = "{}_{}".format(textDict[sublabel],num[sublabel])
+    #                 num[sublabel] += 1
+    #                 fol_dict[label] = list(map(float,subcoords))
+            
+    #         overall_dict[fol[-17:]] = fol_dict
+
+    #         # except:
+    #         #     print("\nError in Folder: {}\n".format(fol[-17:]))
+    #         #     with open("Errors.txt",'a') as f:
+    #         #         f.write("\n{}\n".format(fol[-17:]))
+
+    # with open(jsonFile,'a') as f:
+    #     json.dump(overall_dict,f)
